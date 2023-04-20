@@ -1,2 +1,2 @@
-/usr/share/balls
-/etc/passwd
+printer/printer.exe
+testfiles/test.txt
