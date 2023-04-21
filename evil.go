@@ -7,9 +7,7 @@ import (
 	"log"
 	"os"
 
-	// "os/signal"
 	"strings"
-	// "syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
